@@ -59,7 +59,7 @@ function proxy() {
   status                     查看当前状态
 
 选项 (仅 on 命令):
-  --test-direct URL    代理前测试的URL（默认: bing.com）
+  --test-direct URL    代理前测试的URL（默认: baidu.com）
   --test-proxy URL     代理后测试的URL（默认: google.com）
 
 示例:
@@ -77,7 +77,7 @@ EOF
 
             local proxy_ip=""
             local proxy_port=""
-            local test_url_direct="https://www.bing.com"
+            local test_url_direct="https://www.baidu.com"
             local test_url_proxy="https://www.google.com"
 
             # 解析参数

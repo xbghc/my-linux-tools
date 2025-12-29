@@ -24,7 +24,7 @@ proxy off                     # 关闭代理
 proxy status                  # 查看代理状态
 
 # 自定义测试URL
-proxy on --test-direct https://baidu.com   # 代理前测试URL
+proxy on --test-direct https://bing.com    # 代理前测试URL
 proxy on --test-proxy https://x.com        # 代理后测试URL
 ```
 
