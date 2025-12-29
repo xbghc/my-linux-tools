@@ -1,117 +1,132 @@
 # ==============================================================================
-#  功能强大的代理管理函数 (Pure Shell)
+#  WSL 代理管理函数
 #  用法:
-#    proxy on [ip_address] [port]  - 开启代理。若不提供IP，则自动检测。
-#    proxy off                      - 关闭代理。
-#    proxy status                   - 查看当前状态。
+#    proxy on [ip] [port]  - 开启代理（IP可选，自动检测；端口默认7890）
+#    proxy off             - 关闭代理
+#    proxy status          - 查看当前状态
 # ==============================================================================
-function proxy() {
-    # 定义颜色以便输出
-    local C_RED='\033[0;31m'
-    local C_GREEN='\033[0;32m'
-    local C_YELLOW='\033[0;33m'
-    local C_BLUE='\033[0;34m'
-    local C_NC='\033[0m' # No Color
 
-    # 主逻辑：根据第一个参数选择操作
+function proxy() {
+    # ----------------------------- 配置 -----------------------------
+    local DEFAULT_PORT="7890"
+    local TIMEOUT=5
+    local TEST_URL_DIRECT="https://www.bing.com"
+    local TEST_URL_PROXY="https://www.google.com"
+
+    # ----------------------------- 颜色 -----------------------------
+    local RED='\033[0;31m'
+    local GREEN='\033[0;32m'
+    local YELLOW='\033[0;33m'
+    local BLUE='\033[0;34m'
+    local NC='\033[0m'
+
+    # --------------------------- 辅助函数 ---------------------------
+    _proxy_log_info()    { echo -e "${BLUE}$1${NC}"; }
+    _proxy_log_success() { echo -e "${GREEN}$1${NC}"; }
+    _proxy_log_warn()    { echo -e "${YELLOW}$1${NC}"; }
+    _proxy_log_error()   { echo -e "${RED}$1${NC}"; }
+
+    _proxy_test_url() {
+        curl -s -f --connect-timeout "$TIMEOUT" --head -o /dev/null "$1" 2>/dev/null
+    }
+
+    _proxy_get_gateway_ip() {
+        ip route | awk '/default/ {print $3; exit}'
+    }
+
+    _proxy_set_env() {
+        local url="$1"
+        export http_proxy="$url"
+        export https_proxy="$url"
+        export ftp_proxy="$url"
+        export no_proxy="localhost,127.0.0.1,::1"
+        export HTTP_PROXY="$url"
+        export HTTPS_PROXY="$url"
+        export FTP_PROXY="$url"
+        export NO_PROXY="$no_proxy"
+    }
+
+    _proxy_unset_env() {
+        unset http_proxy https_proxy ftp_proxy no_proxy
+        unset HTTP_PROXY HTTPS_PROXY FTP_PROXY NO_PROXY
+    }
+
+    _proxy_show_usage() {
+        cat << 'EOF'
+用法: proxy <command> [options]
+
+命令:
+  on [ip] [port]   开启代理（IP自动检测，端口默认7890）
+  off              关闭代理
+  status           查看当前状态
+
+示例:
+  proxy on                    # 自动检测IP，默认端口
+  proxy on 192.168.1.1        # 指定IP
+  proxy on 192.168.1.1 10808  # 指定IP和端口
+EOF
+    }
+
+    # --------------------------- 主逻辑 ---------------------------
     case "$1" in
         on)
-            # --- 1. 预检查：测试直接网络连接 ---
-            echo -e "${C_YELLOW}正在测试直接网络连接 (bing.com)...${C_NC}"
-            # -s: 静默模式; -f: HTTP错误时失败退出; -o: 输出丢弃; --connect-timeout: 连接超时
-            if ! curl -s -f --connect-timeout 5 -o /dev/null https://www.bing.com; then
-                echo -e "${C_RED}错误: 无法访问 bing.com。请先检查您的网络连接。${C_NC}"
-                return 1
-            fi
-            echo -e "${C_GREEN}网络连接正常。${C_NC}"
-
             local proxy_ip=""
-            local proxy_port="7890"  # 默认端口
-            
-            # --- 2. 获取代理IP：检查是否传入参数，否则自动获取 ---
+            local proxy_port="${3:-$DEFAULT_PORT}"
+
+            # 获取 IP
             if [ -n "$2" ]; then
                 proxy_ip="$2"
-                echo -e "${C_BLUE}使用您提供的IP地址: ${proxy_ip}${C_NC}"
+                _proxy_log_info "使用指定IP: $proxy_ip"
             else
-                echo -e "${C_BLUE}未提供IP，正在自动检测网关IP...${C_NC}"
-                # 通过 `ip route` 获取默认网关IP
-                proxy_ip=$(ip route | grep default | awk '{print $3}')
+                _proxy_log_info "正在自动检测网关IP..."
+                proxy_ip=$(_proxy_get_gateway_ip)
                 if [ -z "$proxy_ip" ]; then
-                    echo -e "${C_RED}错误: 自动检测IP失败。请检查 'ip route' 命令的输出。${C_NC}"
+                    _proxy_log_error "错误: 无法检测网关IP"
                     return 1
                 fi
-                echo -e "${C_BLUE}检测到IP地址: ${proxy_ip}${C_NC}"
+                _proxy_log_info "检测到网关: $proxy_ip"
             fi
-            
-            # --- 3. 获取代理端口：检查是否传入第三个参数 ---
-            if [ -n "$3" ]; then
-                proxy_port="$3"
-                echo -e "${C_BLUE}使用自定义端口: ${proxy_port}${C_NC}"
-            else
-                echo -e "${C_BLUE}使用默认端口: ${proxy_port}${C_NC}"
+
+            # 测试直连
+            _proxy_log_warn "正在测试网络连接..."
+            if ! _proxy_test_url "$TEST_URL_DIRECT"; then
+                _proxy_log_error "错误: 无法访问网络，请检查连接"
+                return 1
             fi
+
+            # 设置代理
             local proxy_url="http://${proxy_ip}:${proxy_port}"
+            _proxy_set_env "$proxy_url"
+            _proxy_log_info "代理地址: $proxy_url"
 
-            # --- 4. 设置环境变量 ---
-            echo "设置代理环境变量为: ${proxy_url}"
-            export http_proxy="${proxy_url}"
-            export https_proxy="${proxy_url}"
-            export ftp_proxy="${proxy_url}"
-            export no_proxy="localhost,127.0.0.1,::1"
-            # 兼容全大写的变量
-            export HTTP_PROXY="${http_proxy}"
-            export HTTPS_PROXY="${https_proxy}"
-            export FTP_PROXY="${ftp_proxy}"
-            export NO_PROXY="${no_proxy}"
-
-            # --- 5. 后检查：测试通过代理的连接 ---
-            echo -e "${C_YELLOW}正在通过代理测试连接 (google.com)...${C_NC}"
-            if curl -s -f --connect-timeout 5 --head -o /dev/null https://www.google.com; then
-                echo -e "${C_GREEN}✅ 代理设置成功并通过连接测试！${C_NC}"
+            # 测试代理
+            _proxy_log_warn "正在测试代理连接..."
+            if _proxy_test_url "$TEST_URL_PROXY"; then
+                _proxy_log_success "代理设置成功！"
             else
-                echo -e "${C_RED}❌ 错误: 代理已设置，但无法通过代理访问 google.com。${C_NC}"
-                echo -e "${C_RED}   请检查您的代理服务是否在 ${proxy_ip}:${proxy_port} 上正常运行。${C_NC}"
-                echo -e "${C_YELLOW}正在撤销代理设置...${C_NC}"
-                proxy off > /dev/null # 调用自己来关闭代理，并抑制其输出
+                _proxy_log_error "代理连接失败，请检查代理服务"
+                _proxy_unset_env
+                return 1
             fi
             ;;
 
         off)
-            echo "正在清除代理环境变量..."
-            unset http_proxy
-            unset https_proxy
-            unset ftp_proxy
-            unset no_proxy
-            unset HTTP_PROXY
-            unset HTTPS_PROXY
-            unset FTP_PROXY
-            unset NO_PROXY
-            echo -e "${C_GREEN}☑️ 代理已关闭。${C_NC}"
+            _proxy_unset_env
+            _proxy_log_success "代理已关闭"
             ;;
 
         status)
-            echo -e "${C_BLUE}--- 当前代理状态 ---${C_NC}"
+            echo -e "${BLUE}--- 代理状态 ---${NC}"
             if [ -n "$http_proxy" ]; then
-                echo -e "状态: ${C_GREEN}🟢 开启${C_NC}"
-                echo "http_proxy : $http_proxy"
-                echo "https_proxy: $https_proxy"
-                echo "no_proxy   : $no_proxy"
+                echo -e "状态: ${GREEN}已开启${NC}"
+                echo "地址: $http_proxy"
             else
-                echo -e "状态: ${C_RED}🔴 关闭${C_NC}"
+                echo -e "状态: ${RED}已关闭${NC}"
             fi
-            echo -e "${C_BLUE}--------------------${C_NC}"
             ;;
 
         *)
-            echo "用法: proxy [on|off|status] [ip_address] [port]"
-            echo "  on [ip] [port]   - 开启代理。IP和端口都可选，默认自动检测IP，端口默认7890。"
-            echo "  off              - 关闭代理。"
-            echo "  status           - 查看当前状态。"
-            echo ""
-            echo "示例:"
-            echo "  proxy on                    # 自动检测IP，使用默认端口7890"
-            echo "  proxy on 192.168.1.1        # 指定IP，使用默认端口7890"
-            echo "  proxy on 192.168.1.1 10808  # 指定IP和端口"
+            _proxy_show_usage
             ;;
     esac
 }
