@@ -1,17 +1,15 @@
 # ==============================================================================
 #  WSL 代理管理函数
 #  用法:
-#    proxy on [ip] [port]  - 开启代理（IP可选，自动检测；端口默认7890）
-#    proxy off             - 关闭代理
-#    proxy status          - 查看当前状态
+#    proxy on [ip] [port] [--test-direct URL] [--test-proxy URL]
+#    proxy off
+#    proxy status
 # ==============================================================================
 
 function proxy() {
     # ----------------------------- 配置 -----------------------------
     local DEFAULT_PORT="7890"
     local TIMEOUT=5
-    local TEST_URL_DIRECT="https://www.bing.com"
-    local TEST_URL_PROXY="https://www.google.com"
 
     # ----------------------------- 颜色 -----------------------------
     local RED='\033[0;31m'
@@ -56,26 +54,59 @@ function proxy() {
 用法: proxy <command> [options]
 
 命令:
-  on [ip] [port]   开启代理（IP自动检测，端口默认7890）
-  off              关闭代理
-  status           查看当前状态
+  on [ip] [port] [options]   开启代理
+  off                        关闭代理
+  status                     查看当前状态
+
+选项 (仅 on 命令):
+  --test-direct URL    代理前测试的URL（默认: bing.com）
+  --test-proxy URL     代理后测试的URL（默认: google.com）
 
 示例:
-  proxy on                    # 自动检测IP，默认端口
-  proxy on 192.168.1.1        # 指定IP
-  proxy on 192.168.1.1 10808  # 指定IP和端口
+  proxy on                              # 自动检测IP，默认端口
+  proxy on 192.168.1.1                  # 指定IP
+  proxy on 192.168.1.1 10808            # 指定IP和端口
+  proxy on --test-proxy https://x.com   # 自定义代理测试URL
 EOF
     }
 
     # --------------------------- 主逻辑 ---------------------------
     case "$1" in
         on)
+            shift  # 移除 'on'
+
             local proxy_ip=""
-            local proxy_port="${3:-$DEFAULT_PORT}"
+            local proxy_port=""
+            local test_url_direct="https://www.bing.com"
+            local test_url_proxy="https://www.google.com"
+
+            # 解析参数
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --test-direct)
+                        test_url_direct="$2"
+                        shift 2
+                        ;;
+                    --test-proxy)
+                        test_url_proxy="$2"
+                        shift 2
+                        ;;
+                    *)
+                        # 位置参数：第一个是IP，第二个是端口
+                        if [ -z "$proxy_ip" ]; then
+                            proxy_ip="$1"
+                        elif [ -z "$proxy_port" ]; then
+                            proxy_port="$1"
+                        fi
+                        shift
+                        ;;
+                esac
+            done
+
+            proxy_port="${proxy_port:-$DEFAULT_PORT}"
 
             # 获取 IP
-            if [ -n "$2" ]; then
-                proxy_ip="$2"
+            if [ -n "$proxy_ip" ]; then
                 _proxy_log_info "使用指定IP: $proxy_ip"
             else
                 _proxy_log_info "正在自动检测网关IP..."
@@ -88,8 +119,8 @@ EOF
             fi
 
             # 测试直连
-            _proxy_log_warn "正在测试网络连接..."
-            if ! _proxy_test_url "$TEST_URL_DIRECT"; then
+            _proxy_log_warn "正在测试网络连接 ($test_url_direct)..."
+            if ! _proxy_test_url "$test_url_direct"; then
                 _proxy_log_error "错误: 无法访问网络，请检查连接"
                 return 1
             fi
@@ -100,8 +131,8 @@ EOF
             _proxy_log_info "代理地址: $proxy_url"
 
             # 测试代理
-            _proxy_log_warn "正在测试代理连接..."
-            if _proxy_test_url "$TEST_URL_PROXY"; then
+            _proxy_log_warn "正在测试代理连接 ($test_url_proxy)..."
+            if _proxy_test_url "$test_url_proxy"; then
                 _proxy_log_success "代理设置成功！"
             else
                 _proxy_log_error "代理连接失败，请检查代理服务"
