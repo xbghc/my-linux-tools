@@ -4,12 +4,31 @@
 #    proxy on [ip] [port] [--test-direct URL] [--test-proxy URL]
 #    proxy off
 #    proxy status
+#  配置文件: ~/.config/proxy/config
+#    proxy_schema=http
+#    proxy_host=192.168.1.1
+#    proxy_port=7890
 # ==============================================================================
 
 function proxy() {
     # ----------------------------- 配置 -----------------------------
+    local CONFIG_FILE="$HOME/.config/proxy/config"
+    local DEFAULT_SCHEMA="http"
+    local DEFAULT_HOST=""
     local DEFAULT_PORT="7890"
     local TIMEOUT=5
+
+    # 读取配置文件
+    if [ -f "$CONFIG_FILE" ]; then
+        local config_schema config_host config_port
+        config_schema=$(grep -E "^proxy_schema=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+        config_host=$(grep -E "^proxy_host=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+        config_port=$(grep -E "^proxy_port=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+
+        [ -n "$config_schema" ] && DEFAULT_SCHEMA="$config_schema"
+        [ -n "$config_host" ] && DEFAULT_HOST="$config_host"
+        [ -n "$config_port" ] && DEFAULT_PORT="$config_port"
+    fi
 
     # ----------------------------- 颜色 -----------------------------
     local RED='\033[0;31m'
@@ -62,8 +81,13 @@ function proxy() {
   --test-direct URL    代理前测试的URL（默认: baidu.com）
   --test-proxy URL     代理后测试的URL（默认: google.com）
 
+配置文件: ~/.config/proxy/config
+  proxy_schema=http    代理协议（http/socks5）
+  proxy_host=1.2.3.4   代理主机地址
+  proxy_port=7890      代理端口
+
 示例:
-  proxy on                              # 自动检测IP，默认端口
+  proxy on                              # 使用配置文件或自动检测
   proxy on 192.168.1.1                  # 指定IP
   proxy on 192.168.1.1 10808            # 指定IP和端口
   proxy on --test-proxy https://x.com   # 自定义代理测试URL
@@ -81,7 +105,8 @@ EOF
                 _proxy_unset_env
             fi
 
-            local proxy_ip=""
+            local proxy_schema="$DEFAULT_SCHEMA"
+            local proxy_ip="$DEFAULT_HOST"
             local proxy_port=""
             local test_url_direct="https://www.baidu.com"
             local test_url_proxy="https://www.google.com"
@@ -113,7 +138,7 @@ EOF
 
             # 获取 IP
             if [ -n "$proxy_ip" ]; then
-                _proxy_log_info "使用指定IP: $proxy_ip"
+                _proxy_log_info "使用代理主机: $proxy_ip"
             else
                 _proxy_log_info "正在自动检测网关IP..."
                 proxy_ip=$(_proxy_get_gateway_ip)
@@ -132,7 +157,7 @@ EOF
             fi
 
             # 设置代理
-            local proxy_url="http://${proxy_ip}:${proxy_port}"
+            local proxy_url="${proxy_schema}://${proxy_ip}:${proxy_port}"
             _proxy_set_env "$proxy_url"
             _proxy_log_info "代理地址: $proxy_url"
 
