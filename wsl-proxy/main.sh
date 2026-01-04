@@ -75,6 +75,12 @@ EOF
         on)
             shift  # 移除 'on'
 
+            if [ -n "$http_proxy" ]; then
+                _proxy_log_warn "代理当前已启用: $http_proxy"
+                _proxy_log_info "正在重置并重新配置..."
+                _proxy_unset_env
+            fi
+
             local proxy_ip=""
             local proxy_port=""
             local test_url_direct="https://www.baidu.com"
