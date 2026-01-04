@@ -47,6 +47,10 @@ function proxy() {
         curl -s -f --connect-timeout "$TIMEOUT" --head -o /dev/null "$1" 2>/dev/null
     }
 
+    _proxy_is_wsl() {
+        grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null
+    }
+
     _proxy_get_gateway_ip() {
         ip route | awk '/default/ {print $3; exit}'
     }
@@ -86,8 +90,12 @@ function proxy() {
   proxy_host=1.2.3.4   代理主机地址
   proxy_port=7890      代理端口
 
+说明:
+  在WSL环境下会自动获取Windows主机IP作为代理地址
+  非WSL环境需要通过参数或配置文件指定代理主机
+
 示例:
-  proxy on                              # 使用配置文件或自动检测
+  proxy on                              # WSL下自动检测，或使用配置文件
   proxy on 192.168.1.1                  # 指定IP
   proxy on 192.168.1.1 10808            # 指定IP和端口
   proxy on --test-proxy https://x.com   # 自定义代理测试URL
@@ -139,14 +147,17 @@ EOF
             # 获取 IP
             if [ -n "$proxy_ip" ]; then
                 _proxy_log_info "使用代理主机: $proxy_ip"
-            else
-                _proxy_log_info "正在自动检测网关IP..."
+            elif _proxy_is_wsl; then
+                _proxy_log_info "检测到WSL环境，正在自动获取主机IP..."
                 proxy_ip=$(_proxy_get_gateway_ip)
                 if [ -z "$proxy_ip" ]; then
                     _proxy_log_error "错误: 无法检测网关IP"
                     return 1
                 fi
-                _proxy_log_info "检测到网关: $proxy_ip"
+                _proxy_log_info "检测到主机: $proxy_ip"
+            else
+                _proxy_log_error "错误: 未指定代理主机，请通过参数或配置文件设置"
+                return 1
             fi
 
             # 测试直连
