@@ -38,9 +38,11 @@ function proxy() {
     local NC='\033[0m'
 
     # --------------------------- 辅助函数 ---------------------------
-    _proxy_log_info()    { echo -e "${BLUE}$1${NC}"; }
-    _proxy_log_success() { echo -e "${GREEN}$1${NC}"; }
-    _proxy_log_warn()    { echo -e "${YELLOW}$1${NC}"; }
+    local _verbose=0
+
+    _proxy_log_info()    { [[ $_verbose -eq 1 ]] && echo -e "${BLUE}$1${NC}"; return 0; }
+    _proxy_log_success() { [[ $_verbose -eq 1 ]] && echo -e "${GREEN}$1${NC}"; return 0; }
+    _proxy_log_warn()    { [[ $_verbose -eq 1 ]] && echo -e "${YELLOW}$1${NC}"; return 0; }
     _proxy_log_error()   { echo -e "${RED}$1${NC}"; }
 
     _proxy_test_url() {
@@ -81,6 +83,9 @@ function proxy() {
   off                        关闭代理
   status                     查看当前状态
 
+选项 (on/off 命令):
+  -v, --verbose        显示详细输出信息
+
 选项 (仅 on 命令):
   --test-direct URL    代理前测试的URL（默认: baidu.com）
   --test-proxy URL     代理后测试的URL（默认: google.com）
@@ -93,9 +98,11 @@ function proxy() {
 说明:
   在WSL环境下会自动获取Windows主机IP作为代理地址
   非WSL环境需要通过参数或配置文件指定代理主机
+  默认静默模式运行，使用 -v 选项可显示详细日志
 
 示例:
   proxy on                              # WSL下自动检测，或使用配置文件
+  proxy on -v                           # 显示详细输出
   proxy on 192.168.1.1                  # 指定IP
   proxy on 192.168.1.1 10808            # 指定IP和端口
   proxy on --test-proxy https://x.com   # 自定义代理测试URL
@@ -122,6 +129,10 @@ EOF
             # 解析参数
             while [ $# -gt 0 ]; do
                 case "$1" in
+                    -v|--verbose)
+                        _verbose=1
+                        shift
+                        ;;
                     --test-direct)
                         test_url_direct="$2"
                         shift 2
@@ -184,6 +195,8 @@ EOF
             ;;
 
         off)
+            shift
+            [[ "$1" == "-v" || "$1" == "--verbose" ]] && _verbose=1
             _proxy_unset_env
             _proxy_log_success "代理已关闭"
             ;;
