@@ -101,7 +101,8 @@ EOF
 # 用户可在 ~/.config/proxy/config 覆盖以下任意项
 proxy_schema=http
 proxy_host=
-proxy_port=7890
+# proxy_port 用 'proxy detect-port --system' 探测写入；也可手动填
+proxy_port=
 
 # 登录时自动开启代理：1 / true / yes 开启，其它为关闭
 auto_on=0
@@ -111,9 +112,9 @@ EOF
 
     echo
     info "完成。后续："
-    echo "  1. 编辑 $CONFIG 填入 proxy_host / proxy_port"
-    echo "  2. 需要登录自动开启时把 auto_on 设为 1"
-    echo "  3. 重新登录，任意用户执行 'proxy status' 验证"
+    echo "  1. 编辑 $CONFIG 填入 proxy_host（非 WSL 必填）"
+    echo "  2. 代理启动后运行 'proxy detect-port --system' 探测并写入端口（需 root）"
+    echo "  3. 需要登录自动开启把 auto_on 设为 1，重新登录后 'proxy status' 验证"
 }
 
 do_uninstall() {

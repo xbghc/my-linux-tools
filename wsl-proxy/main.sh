@@ -4,6 +4,7 @@
 #    proxy on [ip] [port] [--test-direct URL] [--test-proxy URL]
 #    proxy off
 #    proxy status
+#    proxy detect-port [host] [--system]   # 探测可用端口并保存到配置
 #  配置文件（优先级低→高，后者覆盖前者）:
 #    /etc/proxy/config        系统级（一个系统一份）
 #    ~/.config/proxy/config   用户级（覆盖系统级）
@@ -18,8 +19,10 @@ function proxy() {
     local USER_CONFIG="$HOME/.config/proxy/config"
     local DEFAULT_SCHEMA="http"
     local DEFAULT_HOST=""
-    local DEFAULT_PORT="7890"
+    local DEFAULT_PORT=""          # 留空则在 proxy on 时自动探测常用代理端口
     local TIMEOUT=5
+    # 探测时尝试的代理端口候选（按顺序，命中即止；可按需增减）
+    local COMMON_PORTS="7890 7897 1080 20172"
 
     # 读取配置文件：先系统级，再用户级；用户级覆盖系统级
     # （实现"一个系统一份默认配置 + 个别用户可覆盖"）
@@ -62,6 +65,43 @@ function proxy() {
         ip route | awk '/default/ {print $3; exit}'
     }
 
+    # TCP 连通性测试（不依赖 nc，用 bash 内建 /dev/tcp）
+    _proxy_port_open() {
+        local host="$1" port="$2"
+        timeout 1 bash -c 'exec 3<>/dev/tcp/$1/$2' _ "$host" "$port" 2>/dev/null
+    }
+
+    # 在 host 上探测可用代理端口：遍历常用端口，先测连通，再验证是否真为可用代理
+    # 命中则 echo 端口号并返回 0，否则返回 1
+    _proxy_detect_port() {
+        local host="$1" schema="$2" test_url="$3" port
+        for port in $COMMON_PORTS; do
+            _proxy_port_open "$host" "$port" || continue
+            if curl -s -f --connect-timeout 2 --head \
+                    -x "${schema}://${host}:${port}" -o /dev/null "$test_url" 2>/dev/null; then
+                echo "$port"
+                return 0
+            fi
+        done
+        return 1
+    }
+
+    # 把端口保存到配置文件（纯 bash 读写，替换或追加 proxy_port 行）
+    _proxy_save_port() {
+        local file="$1" port="$2" line content="" found=0
+        [ -d "${file%/*}" ] || mkdir -p "${file%/*}" 2>/dev/null || return 1
+        if [ -f "$file" ]; then
+            while IFS= read -r line || [ -n "$line" ]; do
+                case "$line" in
+                    proxy_port=*) content+="proxy_port=$port"$'\n'; found=1 ;;
+                    *)            content+="$line"$'\n' ;;
+                esac
+            done < "$file"
+        fi
+        [ "$found" -eq 0 ] && content+="proxy_port=$port"$'\n'
+        printf '%s' "$content" > "$file" 2>/dev/null || return 1
+    }
+
     _proxy_set_env() {
         local url="$1"
         export http_proxy="$url"
@@ -84,9 +124,10 @@ function proxy() {
 用法: proxy <command> [options]
 
 命令:
-  on [ip] [port] [options]   开启代理
+  on [ip] [port] [options]   开启代理（端口取自参数/配置）
   off                        关闭代理
   status                     查看当前状态
+  detect-port [host]         探测可用端口并保存到配置（加 --system 写系统级）
 
 选项 (on/off 命令):
   -v, --verbose        显示详细输出信息
@@ -100,11 +141,12 @@ function proxy() {
   ~/.config/proxy/config   用户级（覆盖系统级）
     proxy_schema=http    代理协议（http/socks5）
     proxy_host=1.2.3.4   代理主机地址
-    proxy_port=7890      代理端口
+    proxy_port=7890      代理端口（用 proxy detect-port 探测保存，或手动设置）
 
 说明:
   在WSL环境下会自动获取Windows主机IP作为代理地址
   非WSL环境需要通过参数或配置文件指定代理主机
+  端口用 'proxy detect-port' 探测并保存到配置；proxy on 只读配置端口
   默认静默模式运行，使用 -v 选项可显示详细日志
 
 示例:
@@ -112,6 +154,7 @@ function proxy() {
   proxy on -v                           # 显示详细输出
   proxy on 192.168.1.1                  # 指定IP
   proxy on 192.168.1.1 10808            # 指定IP和端口
+  proxy detect-port                     # 探测端口并保存到配置
   proxy on --test-proxy https://x.com   # 自定义代理测试URL
 EOF
     }
@@ -130,6 +173,7 @@ EOF
             local proxy_schema="$DEFAULT_SCHEMA"
             local proxy_ip="$DEFAULT_HOST"
             local proxy_port=""
+            local _pos=0
             local test_url_direct="https://www.baidu.com"
             local test_url_proxy="https://www.google.com"
 
@@ -149,18 +193,15 @@ EOF
                         shift 2
                         ;;
                     *)
-                        # 位置参数：第一个是IP，第二个是端口
-                        if [ -z "$proxy_ip" ]; then
-                            proxy_ip="$1"
-                        elif [ -z "$proxy_port" ]; then
-                            proxy_port="$1"
+                        # 位置参数：第一个是IP，第二个是端口（按位置计数，不受配置默认值影响）
+                        _pos=$((_pos + 1))
+                        if   [ "$_pos" -eq 1 ]; then proxy_ip="$1"
+                        elif [ "$_pos" -eq 2 ]; then proxy_port="$1"
                         fi
                         shift
                         ;;
                 esac
             done
-
-            proxy_port="${proxy_port:-$DEFAULT_PORT}"
 
             # 获取 IP
             if [ -n "$proxy_ip" ]; then
@@ -175,6 +216,13 @@ EOF
                 _proxy_log_info "检测到主机: $proxy_ip"
             else
                 _proxy_log_error "错误: 未指定代理主机，请通过参数或配置文件设置"
+                return 1
+            fi
+
+            # 确定端口：来自参数或配置；都没有则提示先探测或配置
+            proxy_port="${proxy_port:-$DEFAULT_PORT}"
+            if [ -z "$proxy_port" ]; then
+                _proxy_log_error "错误: 未配置端口。请运行 'proxy detect-port' 探测，或在配置中设置 proxy_port"
                 return 1
             fi
 
@@ -197,6 +245,44 @@ EOF
             else
                 _proxy_log_error "代理连接失败，请检查代理服务"
                 _proxy_unset_env
+                return 1
+            fi
+            ;;
+
+        detect-port)
+            shift
+            local detect_host="$DEFAULT_HOST"
+            local save_target="$USER_CONFIG"
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    -v|--verbose) _verbose=1; shift ;;
+                    --system) save_target="$SYSTEM_CONFIG"; shift ;;
+                    *) [ -z "$detect_host" ] && detect_host="$1"; shift ;;
+                esac
+            done
+            # 未指定主机时：WSL 取网关，否则探测本机
+            if [ -z "$detect_host" ]; then
+                if _proxy_is_wsl; then
+                    detect_host=$(_proxy_get_gateway_ip)
+                else
+                    detect_host="localhost"
+                fi
+            fi
+            if [ -z "$detect_host" ]; then
+                _proxy_log_error "错误: 无法确定要探测的主机"
+                return 1
+            fi
+            echo -e "${YELLOW}正在探测代理端口 ($detect_host)...${NC}"
+            local _p
+            _p=$(_proxy_detect_port "$detect_host" "$DEFAULT_SCHEMA" "https://www.google.com")
+            if [ -z "$_p" ]; then
+                _proxy_log_error "未探测到可用代理端口，请确认代理正在运行"
+                return 1
+            fi
+            if _proxy_save_port "$save_target" "$_p"; then
+                echo -e "${GREEN}已探测到端口 $_p，保存到 $save_target${NC}"
+            else
+                _proxy_log_error "探测到端口 $_p，但无法写入 $save_target（写系统配置需 root）"
                 return 1
             fi
             ;;

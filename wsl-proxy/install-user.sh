@@ -82,7 +82,8 @@ EOF
 # proxy 工具用户级配置
 proxy_schema=http
 proxy_host=
-proxy_port=7890
+# proxy_port 用 'proxy detect-port' 探测写入；也可手动填
+proxy_port=
 
 # 登录时自动开启代理：1 / true / yes 开启，其它为关闭
 auto_on=0
@@ -91,9 +92,9 @@ EOF
 
     echo
     info "完成。后续："
-    echo "  1. 编辑 $CONFIG 填入 proxy_host / proxy_port"
-    echo "  2. 需要登录自动开启时把 auto_on 设为 1"
-    echo "  3. 执行 'source $BASHRC'，再 'proxy status' 验证"
+    echo "  1. source $BASHRC（或重开终端）让 proxy 命令生效"
+    echo "  2. 编辑 $CONFIG 填 proxy_host，代理运行后执行 'proxy detect-port' 探测并写入端口"
+    echo "  3. proxy status 验证"
 }
 
 do_uninstall() {
