@@ -1,34 +1,39 @@
 # ==============================================================================
-#  WSL 代理管理函数
+#  代理管理函数（支持系统级 / 用户级配置，WSL 下自动探测主机 IP）
 #  用法:
 #    proxy on [ip] [port] [--test-direct URL] [--test-proxy URL]
 #    proxy off
 #    proxy status
-#  配置文件: ~/.config/proxy/config
-#    proxy_schema=http
-#    proxy_host=192.168.1.1
-#    proxy_port=7890
+#  配置文件（优先级低→高，后者覆盖前者）:
+#    /etc/proxy/config        系统级（一个系统一份）
+#    ~/.config/proxy/config   用户级（覆盖系统级）
+#      proxy_schema=http
+#      proxy_host=192.168.1.1
+#      proxy_port=7890
 # ==============================================================================
 
 function proxy() {
     # ----------------------------- 配置 -----------------------------
-    local CONFIG_FILE="$HOME/.config/proxy/config"
+    local SYSTEM_CONFIG="/etc/proxy/config"
+    local USER_CONFIG="$HOME/.config/proxy/config"
     local DEFAULT_SCHEMA="http"
     local DEFAULT_HOST=""
     local DEFAULT_PORT="7890"
     local TIMEOUT=5
 
-    # 读取配置文件
-    if [ -f "$CONFIG_FILE" ]; then
-        local config_schema config_host config_port
-        config_schema=$(grep -E "^proxy_schema=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
-        config_host=$(grep -E "^proxy_host=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
-        config_port=$(grep -E "^proxy_port=" "$CONFIG_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+    # 读取配置文件：先系统级，再用户级；用户级覆盖系统级
+    # （实现"一个系统一份默认配置 + 个别用户可覆盖"）
+    local _cfg_file config_schema config_host config_port
+    for _cfg_file in "$SYSTEM_CONFIG" "$USER_CONFIG"; do
+        [ -f "$_cfg_file" ] || continue
+        config_schema=$(grep -E "^proxy_schema=" "$_cfg_file" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+        config_host=$(grep -E "^proxy_host=" "$_cfg_file" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+        config_port=$(grep -E "^proxy_port=" "$_cfg_file" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
 
         [ -n "$config_schema" ] && DEFAULT_SCHEMA="$config_schema"
         [ -n "$config_host" ] && DEFAULT_HOST="$config_host"
         [ -n "$config_port" ] && DEFAULT_PORT="$config_port"
-    fi
+    done
 
     # ----------------------------- 颜色 -----------------------------
     local RED='\033[0;31m'
@@ -90,10 +95,12 @@ function proxy() {
   --test-direct URL    代理前测试的URL（默认: baidu.com）
   --test-proxy URL     代理后测试的URL（默认: google.com）
 
-配置文件: ~/.config/proxy/config
-  proxy_schema=http    代理协议（http/socks5）
-  proxy_host=1.2.3.4   代理主机地址
-  proxy_port=7890      代理端口
+配置文件（优先级低→高，后者覆盖前者）:
+  /etc/proxy/config        系统级（一个系统一份）
+  ~/.config/proxy/config   用户级（覆盖系统级）
+    proxy_schema=http    代理协议（http/socks5）
+    proxy_host=1.2.3.4   代理主机地址
+    proxy_port=7890      代理端口
 
 说明:
   在WSL环境下会自动获取Windows主机IP作为代理地址
