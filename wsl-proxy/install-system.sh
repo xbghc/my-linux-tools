@@ -110,11 +110,20 @@ EOF
         chmod 644 "$CONFIG"
     fi
 
+    # 装好后自动探测并配置（探测逻辑在 proxy detect-port 命令里；代理需正在运行）
+    info "尝试自动探测代理端口..."
+    # shellcheck disable=SC1090
+    . "$LIB_FILE"
+    if proxy detect-port --system >/dev/null 2>&1; then
+        sed -i 's/^auto_on=.*/auto_on=1/' "$CONFIG" 2>/dev/null
+        info "已自动写入 host+port 并设 auto_on=1（登录自动开启）"
+    else
+        warn "未探测到端口（代理可能未运行）。启动代理后执行："
+        warn "    sudo bash -c '. $LIB_FILE && proxy detect-port --system'"
+    fi
+
     echo
-    info "完成。后续："
-    echo "  1. 编辑 $CONFIG 填入 proxy_host（非 WSL 必填）"
-    echo "  2. 代理启动后运行 'proxy detect-port --system' 探测并写入端口（需 root）"
-    echo "  3. 需要登录自动开启把 auto_on 设为 1，重新登录后 'proxy status' 验证"
+    info "完成。重新登录后任意用户 'proxy status' 验证；配置见 $CONFIG"
 }
 
 do_uninstall() {

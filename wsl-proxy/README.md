@@ -37,7 +37,7 @@ sudo ./install-system.sh --uninstall # 卸载
 | `/etc/bash.bashrc`（追加可逆块） | 交互式非登录 shell（新终端 tab 等）加载函数 |
 | `/etc/proxy/config` | 系统级代理配置 |
 
-安装后编辑 `/etc/proxy/config` 填入 `proxy_host`（端口可用 `proxy detect-port --system` 探测写入），重新登录即可在任意用户下使用 `proxy`。
+安装时若代理正在运行，会**自动探测并写入 `host`+`port`、开启 `auto_on`**，重新登录即可在任意用户下使用 `proxy`。装机时代理还没起来则配置留空，启动代理后跑一次 `sudo bash -c '. /usr/local/lib/proxy/proxy.sh && proxy detect-port --system'` 即可。
 
 ### 用户安装（仅当前用户，无需 root）
 
@@ -67,16 +67,16 @@ sudo ./install-system.sh --uninstall # 卸载
 
 ```ini
 proxy_schema=http     # 代理协议 http / socks5
-proxy_host=127.0.0.1  # 代理主机地址
-proxy_port=7890       # 代理端口；用 proxy detect-port 探测写入，也可手动设置
+proxy_host=127.0.0.1  # 代理主机地址；detect-port 会自动填（本机=localhost）
+proxy_port=7890       # 代理端口；detect-port 探测写入，也可手动设置
 auto_on=0             # 登录时自动开启：1/true/yes 开启（由安装生成的加载块读取）
 ```
 
 WSL 环境下 `proxy_host` 可留空，会自动探测 Windows 主机 IP。
 
-端口探测由 `proxy detect-port` 负责：遍历候选端口（默认 `7890`、`7897`、`1080`、`20172`，可在 `main.sh` 的 `COMMON_PORTS` 增减），先测连通、再实际经该端口访问测试 URL 确认是可用代理，命中后**保存到配置**（默认用户级 `~/.config/proxy/config`，加 `--system` 写 `/etc/proxy/config`，需 root）。`proxy on` 只读配置、不在运行时探测。
+端口探测由 `proxy detect-port` 负责：遍历候选端口（默认 `7890`、`7897`、`1080`、`20172`，可在 `main.sh` 的 `COMMON_PORTS` 增减），先测连通、再实际经该端口访问测试 URL 确认是可用代理，命中后把 **host+port 一起保存到配置**（默认用户级 `~/.config/proxy/config`，加 `--system` 写 `/etc/proxy/config`，需 root）。`proxy on` 只读配置、不在运行时探测。
 
-> 探测需要代理**正在运行**，所以安装后由你主动运行一次 `proxy detect-port`（而非安装时自动跑）。换了代理软件/端口后重跑即可。WSL 下代理在主机、IP 运行时才定，端口仍建议手动配置。
+> **安装脚本装好后会自动调用一次** `proxy detect-port` 并开启 `auto_on`——代理在跑就一步到位。前提是代理**正在运行**；装机时还没起来则配置留空，启动后手动跑一次 `proxy detect-port`（系统级加 `--system`）。换了代理端口后也重跑即可。WSL 下代理在主机、IP 运行时才定，建议手动配置。
 
 ## 用法
 

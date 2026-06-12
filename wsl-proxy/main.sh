@@ -86,19 +86,19 @@ function proxy() {
         return 1
     }
 
-    # 把端口保存到配置文件（纯 bash 读写，替换或追加 proxy_port 行）
-    _proxy_save_port() {
-        local file="$1" port="$2" line content="" found=0
+    # 把 key=value 写入配置文件（替换或追加该 key 行，纯 bash 读写）
+    _proxy_save_kv() {
+        local file="$1" key="$2" val="$3" line content="" found=0
         [ -d "${file%/*}" ] || mkdir -p "${file%/*}" 2>/dev/null || return 1
         if [ -f "$file" ]; then
             while IFS= read -r line || [ -n "$line" ]; do
                 case "$line" in
-                    proxy_port=*) content+="proxy_port=$port"$'\n'; found=1 ;;
-                    *)            content+="$line"$'\n' ;;
+                    "$key="*) content+="$key=$val"$'\n'; found=1 ;;
+                    *)         content+="$line"$'\n' ;;
                 esac
             done < "$file"
         fi
-        [ "$found" -eq 0 ] && content+="proxy_port=$port"$'\n'
+        [ "$found" -eq 0 ] && content+="$key=$val"$'\n'
         printf '%s' "$content" > "$file" 2>/dev/null || return 1
     }
 
@@ -279,10 +279,11 @@ EOF
                 _proxy_log_error "未探测到可用代理端口，请确认代理正在运行"
                 return 1
             fi
-            if _proxy_save_port "$save_target" "$_p"; then
-                echo -e "${GREEN}已探测到端口 $_p，保存到 $save_target${NC}"
+            if _proxy_save_kv "$save_target" proxy_host "$detect_host" \
+               && _proxy_save_kv "$save_target" proxy_port "$_p"; then
+                echo -e "${GREEN}已探测并保存 ${detect_host}:${_p} 到 $save_target${NC}"
             else
-                _proxy_log_error "探测到端口 $_p，但无法写入 $save_target（写系统配置需 root）"
+                _proxy_log_error "探测到 ${detect_host}:${_p}，但无法写入 $save_target（写系统配置需 root）"
                 return 1
             fi
             ;;

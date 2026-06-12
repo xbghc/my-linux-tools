@@ -90,11 +90,19 @@ auto_on=0
 EOF
     fi
 
+    # 装好后自动探测并配置（探测逻辑在 proxy detect-port 命令里；代理需正在运行）
+    info "尝试自动探测代理端口..."
+    # shellcheck disable=SC1090
+    . "$LIB_FILE"
+    if proxy detect-port >/dev/null 2>&1; then
+        sed -i 's/^auto_on=.*/auto_on=1/' "$CONFIG" 2>/dev/null
+        info "已自动写入 host+port 并设 auto_on=1（登录自动开启）"
+    else
+        warn "未探测到端口（代理可能未运行）。启动代理后执行 'proxy detect-port'"
+    fi
+
     echo
-    info "完成。后续："
-    echo "  1. source $BASHRC（或重开终端）让 proxy 命令生效"
-    echo "  2. 编辑 $CONFIG 填 proxy_host，代理运行后执行 'proxy detect-port' 探测并写入端口"
-    echo "  3. proxy status 验证"
+    info "完成。执行 'source $BASHRC' 让命令生效，proxy status 验证。"
 }
 
 do_uninstall() {
